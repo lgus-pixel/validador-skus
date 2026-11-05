@@ -205,7 +205,11 @@ a{color:var(--accent)}
     try {
       const wb = XLSX.read(await f.arrayBuffer(), { type: "array", raw: true });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      setRows(fromMatrix(XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" })));
+      const m = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" })
+        .filter(r => r.some(c => String(c ?? "").trim() !== ""));
+      // Todo en una sola columna (texto pegado en Excel): leerlo como texto
+      const oneCol = m.every(r => r.filter(c => String(c ?? "").trim() !== "").length <= 1);
+      setRows(oneCol ? parseText(m.map(r => r.find(c => String(c ?? "").trim() !== "")).join("\n")) : fromMatrix(m));
     } catch (e) { showErr("No se pudo leer el archivo: " + e.message); }
   }
   $("#file").onchange = e => e.target.files[0] && readFile(e.target.files[0]);
