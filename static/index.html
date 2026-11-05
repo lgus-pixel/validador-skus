@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Validador de SKUs</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#f6f7f9;--surface:#fff;--text:#16181d;--muted:#5d6472;--border:#e2e5ea;
+  --accent:#1f5fd1;--accent-ink:#fff;
+  --ok:#17803d;--ok-bg:#e5f4ea;--duda:#9a6400;--duda-bg:#fdf2dc;--roto:#c22f2f;--roto-bg:#fbe7e7;
+  --radius:10px;--shadow:0 1px 2px rgba(16,24,40,.06);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1115;--surface:#171a20;--text:#e8eaee;--muted:#9aa2b1;--border:#2a2f38;
+  --accent:#6a9cff;--accent-ink:#0b1020;
+  --ok:#5fd08a;--ok-bg:#12301f;--duda:#f0c060;--duda-bg:#33280f;--roto:#ff8a8a;--roto-bg:#3a1717;
+}}
+:root[data-theme="dark"]{
+  --bg:#0f1115;--surface:#171a20;--text:#e8eaee;--muted:#9aa2b1;--border:#2a2f38;
+  --accent:#6a9cff;--accent-ink:#0b1020;
+  --ok:#5fd08a;--ok-bg:#12301f;--duda:#f0c060;--duda-bg:#33280f;--roto:#ff8a8a;--roto-bg:#3a1717;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1180px;margin:0 auto;padding:28px 16px 64px}
+h1{font-size:24px;margin:0 0 4px;letter-spacing:-.01em}
+.sub{color:var(--muted);margin:0 0 24px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin-bottom:18px}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tab{border:1px solid var(--border);background:transparent;color:var(--muted);padding:6px 12px;border-radius:999px;cursor:pointer;font:inherit;font-size:14px}
+.tab[aria-selected="true"]{background:var(--text);color:var(--bg);border-color:var(--text)}
+textarea{width:100%;min-height:170px;resize:vertical;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);padding:10px;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}
+.drop{border:2px dashed var(--border);border-radius:8px;padding:36px 16px;text-align:center;color:var(--muted);cursor:pointer}
+.drop.over{border-color:var(--accent);color:var(--text)}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px}
+.hint{color:var(--muted);font-size:13px}
+.btn{border:1px solid var(--border);background:var(--surface);color:var(--text);padding:8px 14px;border-radius:8px;cursor:pointer;font:inherit;font-size:14px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.link{border:none;background:none;color:var(--accent);padding:0;text-decoration:underline}
+.progress{height:6px;background:var(--border);border-radius:99px;overflow:hidden;flex:1;min-width:120px}
+.progress>i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+.tile{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;text-align:left;font:inherit;color:inherit}
+.tile[aria-pressed="true"]{outline:2px solid var(--accent);outline-offset:-1px}
+.tile .n{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums}
+.tile .l{color:var(--muted);font-size:13px}
+.tile.ok .n{color:var(--ok)}.tile.duda .n{color:var(--duda)}.tile.roto .n{color:var(--roto)}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
+input[type=search]{border:1px solid var(--border);background:var(--bg);color:var(--text);padding:7px 10px;border-radius:8px;font:inherit;font-size:14px;min-width:220px;flex:1;max-width:360px}
+.tablewrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+th{position:sticky;top:0;background:var(--surface);font-weight:600;color:var(--muted);white-space:nowrap}
+td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td.id{font-family:ui-monospace,Menlo,monospace;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+.badge{display:inline-block;padding:2px 8px;border-radius:99px;font-weight:600;font-size:12px;white-space:nowrap}
+.b-OK{background:var(--ok-bg);color:var(--ok)}.b-DUDA{background:var(--duda-bg);color:var(--duda)}.b-ROTO{background:var(--roto-bg);color:var(--roto)}
+.small{color:var(--muted);font-size:12px}
+a{color:var(--accent)}
+.legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;font-size:13px;color:var(--muted)}
+.legend b{color:var(--text)}
+.err{color:var(--roto);font-size:14px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <h1>Validador de SKUs</h1>
+  <p class="sub">Pegue o suba su lista. Se verifica en Plaza Vea y Makro si el link abre, si el SKU pertenece al producto y si hay stock.</p>
+
+  <section class="card">
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-tab="paste">Pegar desde Excel</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="file">Subir archivo</button>
+    </div>
+    <div id="tab-paste">
+      <textarea id="paste" spellcheck="false" placeholder="Copie las celdas desde Excel (incluida la fila de encabezados) y péguelas aquí.&#10;&#10;ID del producto	Nombre del producto	ID de SKU&#10;102405273	Canasta Azul	12652237&#10;&#10;o bien:&#10;link	sku&#10;https://www.plazavea.com.pe/…/p	20281564"></textarea>
+    </div>
+    <div id="tab-file" hidden>
+      <label class="drop" id="drop">
+        <input type="file" id="file" accept=".xlsx,.xls,.csv,.tsv,.txt" hidden>
+        <div><b>Arrastre un archivo</b> o haga clic para elegirlo</div>
+        <div class="small" id="fileName">.xlsx, .csv o .tsv</div>
+      </label>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="run" disabled>Validar</button>
+      <span class="hint" id="count">Sin filas</span>
+      <div class="progress" id="prog" hidden><i></i></div>
+      <span class="hint" id="progTxt"></span>
+      <span style="flex:1"></span>
+      <button class="btn link" id="tpl">Descargar plantilla</button>
+    </div>
+    <p class="hint" style="margin:10px 0 0">Columnas reconocidas: <b>link</b>, <b>ID del producto</b>, <b>ID de SKU</b> (o RefId), <b>Nombre del producto</b>. Basta con link + SKU, o con ID del producto + SKU.</p>
+    <p class="err" id="err" hidden></p>
+  </section>
+
+  <section id="results" hidden>
+    <div class="tiles" id="tiles"></div>
+    <section class="card">
+      <div class="toolbar">
+        <input type="search" id="q" placeholder="Buscar por SKU, ID, nombre o motivo">
+        <div class="row" style="margin:0">
+          <button class="btn" id="dlx">Descargar Excel</button>
+          <button class="btn" id="dlc">CSV</button>
+        </div>
+      </div>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Categoría</th><th>Tienda</th><th>ID producto</th><th>SKU</th><th>Producto en la web</th><th>Motivo</th><th>Stock</th><th>Precio</th><th>Link</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table></div>
+      <p class="small" id="shown"></p>
+    </section>
+  </section>
+
+  <section class="card legend">
+    <div><span class="badge b-OK">OK</span><br>El link abre, el SKU pertenece al producto y hay stock con precio.</div>
+    <div><span class="badge b-DUDA">DUDA</span><br>El SKU falta, no existe o es de otro producto; el ID no coincide; o el link redirige a otro producto.</div>
+    <div><span class="badge b-ROTO">ROTO</span><br><b>404:</b> el link no abre o el producto no existe. <b>Sin stock:</b> stock 0 o sin precio.</div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const BATCH = 25, PARALLEL = 2;
+  let rows = [], results = [], filter = "TODOS";
+
+  // ---------- pestañas
+  document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+    document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-selected", x === t));
+    $("#tab-paste").hidden = t.dataset.tab !== "paste";
+    $("#tab-file").hidden = t.dataset.tab !== "file";
+  });
+
+  // ---------- lectura de la entrada
+  const HEADER_WORDS = /link|url|enlace|sku|producto|nombre|refid|codigo|código/i;
+  function fromMatrix(m) {
+    m = m.filter(r => r.some(c => String(c ?? "").trim() !== ""));
+    if (!m.length) return [];
+    let head = m[0].map(c => String(c ?? "").trim());
+    let body = m.slice(1);
+    if (!head.some(h => HEADER_WORDS.test(h))) {
+      // Sin encabezados: deducir columnas por contenido
+      body = m; const first = m[0].map(c => String(c ?? ""));
+      const nums = first.map((c, i) => /^\d+$/.test(c.trim()) ? i : -1).filter(i => i >= 0);
+      head = first.map((c, i) => /^https?:|\/p\/?$/.test(c) ? "link" : "");
+      if (head.includes("link")) { if (nums.length) head[nums[nums.length - 1]] = "sku"; }
+      else if (nums.length >= 2) { head[nums[0]] = "id_producto"; head[nums[nums.length - 1]] = "sku"; }
+      else if (nums.length === 1) head[nums[0]] = "sku";
+      head = head.map((h, i) => h || (nums.includes(i) ? "" : "nombre"));
+    }
+    return body.map(r => Object.fromEntries(head.map((h, i) => [h, r[i] ?? ""]).filter(([h]) => h)));
+  }
+  function parseText(txt) {
+    const lines = txt.replace(/\r/g, "").split("\n").filter(l => l.trim());
+    if (!lines.length) return [];
+    const d = lines[0].includes("\t") ? "\t" : (lines[0].split(";").length > lines[0].split(",").length ? ";" : ",");
+    return fromMatrix(lines.map(l => l.split(d).map(c => c.trim().replace(/^"|"$/g, ""))));
+  }
+  function setRows(r) {
+    rows = r;
+    $("#count").textContent = rows.length ? `${rows.length} fila${rows.length > 1 ? "s" : ""} lista${rows.length > 1 ? "s" : ""}` : "Sin filas";
+    $("#run").disabled = !rows.length;
+  }
+  $("#paste").addEventListener("input", e => setRows(parseText(e.target.value)));
+
+  async function readFile(f) {
+    $("#fileName").textContent = f.name;
+    try {
+      const wb = XLSX.read(await f.arrayBuffer(), { type: "array", raw: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      setRows(fromMatrix(XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" })));
+    } catch (e) { showErr("No se pudo leer el archivo: " + e.message); }
+  }
+  $("#file").onchange = e => e.target.files[0] && readFile(e.target.files[0]);
+  const drop = $("#drop");
+  ["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", e => e.dataTransfer.files[0] && readFile(e.dataTransfer.files[0]));
+
+  function showErr(m) { $("#err").textContent = m; $("#err").hidden = !m; }
+
+  // ---------- validación por lotes
+  $("#run").onclick = async () => {
+    showErr(""); $("#run").disabled = true;
+    results = new Array(rows.length); let done = 0;
+    const prog = $("#prog"); prog.hidden = false;
+    const tick = () => { prog.firstChild.style.width = (100 * done / rows.length) + "%"; $("#progTxt").textContent = `${done}/${rows.length}`; };
+    tick();
+    const batches = [];
+    for (let i = 0; i < rows.length; i += BATCH) batches.push(i);
+    let failed = 0;
+    async function worker() {
+      while (batches.length) {
+        const start = batches.shift(), chunk = rows.slice(start, start + BATCH);
+        let res;
+        for (let attempt = 0; attempt < 3 && !res; attempt++) {
+          try {
+            const r = await fetch("/api/validar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows: chunk }) });
+            if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+            res = (await r.json()).results;
+          } catch (e) { await new Promise(s => setTimeout(s, 1500 * (attempt + 1))); }
+        }
+        if (!res) { failed += chunk.length; res = chunk.map(c => ({ ...c, categoria: "DUDA", motivo: "Error de conexión con el servidor (reintentar)" })); }
+        res.forEach((r, k) => results[start + k] = r);
+        done += chunk.length; tick(); render();
+      }
+    }
+    await Promise.all(Array.from({ length: PARALLEL }, worker));
+    if (failed) showErr(`${failed} filas no se pudieron validar. Vuelva a intentarlo.`);
+    $("#run").disabled = false;
+  };
+
+  // ---------- resultados
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  function render() {
+    const list = results.filter(Boolean);
+    $("#results").hidden = !list.length;
+    const c = k => list.filter(r => r.categoria === k).length, s = k => list.filter(r => r.subcategoria === k).length;
+    const tiles = [["TODOS", "Total revisado", list.length, ""], ["OK", "OK, pertenece", c("OK"), "ok"],
+      ["DUDA", "Dudas", c("DUDA"), "duda"], ["ROTO", `Rotos · ${s("404")} 404 · ${s("SIN STOCK")} sin stock`, c("ROTO"), "roto"]];
+    $("#tiles").innerHTML = tiles.map(([k, l, n, cls]) =>
+      `<button class="tile ${cls}" data-f="${k}" aria-pressed="${filter === k}"><div class="n">${n}</div><div class="l">${l}</div></button>`).join("");
+    $("#tiles").querySelectorAll(".tile").forEach(b => b.onclick = () => { filter = b.dataset.f; render(); });
+    const q = $("#q").value.trim().toLowerCase();
+    const shown = list.filter(r => (filter === "TODOS" || r.categoria === filter) &&
+      (!q || [r.sku, r.id_producto, r.nombre, r.producto_web, r.motivo, r.link].join(" ").toLowerCase().includes(q)));
+    $("#tbody").innerHTML = shown.slice(0, 1000).map(r => `<tr>
+      <td><span class="badge b-${esc(r.categoria)}">${esc(r.categoria)}${r.subcategoria ? " · " + esc(r.subcategoria) : ""}</span></td>
+      <td>${esc(r.tienda)}</td><td class="id">${esc(r.id_producto || r.id_producto_web)}</td><td class="id">${esc(r.sku)}</td>
+      <td>${esc(r.producto_web || r.nombre)}${r.nombre && r.producto_web ? `<div class="small">Lista: ${esc(r.nombre)}</div>` : ""}</td>
+      <td>${esc(r.motivo)}${r.producto_del_sku ? `<div class="small">SKU es de: ${esc(r.producto_del_sku)}</div>` : ""}</td>
+      <td class="num">${esc(r.stock)}</td><td class="num">${r.precio ? "S/ " + Number(r.precio).toFixed(2) : ""}</td>
+      <td>${r.link ? `<a href="${esc(r.link)}" target="_blank" rel="noopener">abrir</a>` : ""}</td></tr>`).join("");
+    $("#shown").textContent = shown.length > 1000 ? `Mostrando 1000 de ${shown.length}. Descargue el Excel para ver todo.` : `${shown.length} filas`;
+  }
+  $("#q").addEventListener("input", render);
+
+  // ---------- descargas
+  const COLS = ["tienda","link","id_producto","sku","nombre","categoria","subcategoria","motivo","producto_web","id_producto_web","refid_web","sku_pertenece","stock","precio","http","url_final","producto_del_sku","revisado"];
+  const stamp = () => new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+  $("#dlx").onclick = () => {
+    const list = results.filter(Boolean), wb = XLSX.utils.book_new();
+    const n = list.length, cnt = f => list.filter(f).length, pct = x => n ? Math.round(1000 * x / n) / 10 : 0;
+    const sum = [["Categoría", "Cantidad", "%"], ...["OK", "DUDA", "ROTO"].map(k => [k, cnt(r => r.categoria === k), pct(cnt(r => r.categoria === k))]),
+      ...["404", "SIN STOCK"].map(k => ["  ROTO · " + k, cnt(r => r.subcategoria === k), pct(cnt(r => r.subcategoria === k))]), ["TOTAL", n, 100]];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sum), "Resumen");
+    for (const k of ["TODOS", "OK", "DUDA", "ROTO"]) {
+      const data = list.filter(r => k === "TODOS" || r.categoria === k).map(r => COLS.map(c => r[c] ?? ""));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([COLS, ...data]), k);
+    }
+    XLSX.writeFile(wb, `validacion_skus_${stamp()}.xlsx`);
+  };
+  $("#dlc").onclick = () => {
+    const ws = XLSX.utils.aoa_to_sheet([COLS, ...results.filter(Boolean).map(r => COLS.map(c => r[c] ?? ""))]);
+    const blob = new Blob(["﻿" + XLSX.utils.sheet_to_csv(ws)], { type: "text/csv;charset=utf-8" });
+    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `validacion_skus_${stamp()}.csv` });
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+  $("#tpl").onclick = () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["link", "ID del producto", "Nombre del producto", "ID de SKU"],
+      ["", "102405273", "Canasta Azul MAKRO Navidad 2026", "12652237"],
+      ["https://www.plazavea.com.pe/aceite-vegetal-primor-premium-botella-900ml-20281564/p", "", "Aceite Primor 900ml", "20281564"]]), "Lista");
+    XLSX.writeFile(wb, "plantilla_validador_skus.xlsx");
+  };
+})();
+</script>
+</body>
+</html>

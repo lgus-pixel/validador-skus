@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: validador-skus
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
