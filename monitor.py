@@ -122,16 +122,16 @@ def is_404(status, final):
 
 
 # ---------------------------------------------------------------- core
-COLUMNS = ["tienda", "link", "id_producto", "sku", "nombre", "categoria", "subcategoria",
+COLUMNS = ["tienda", "link", "id_producto", "sku", "refid", "nombre", "categoria", "subcategoria",
            "motivo", "producto_web", "id_producto_web", "refid_web", "sku_pertenece",
            "stock", "precio", "http", "url_final", "producto_del_sku", "revisado"]
 
 
 def check(row):
     link = (row.get("link") or "").strip()
-    pid, sku = clean_id(row.get("id_producto")), clean_id(row.get("sku"))
+    pid, sku, refid = clean_id(row.get("id_producto")), clean_id(row.get("sku")), clean_id(row.get("refid"))
     out = dict.fromkeys(COLUMNS, "")
-    out.update(link=link, id_producto=pid, sku=sku, nombre=str(row.get("nombre") or "").strip(),
+    out.update(link=link, id_producto=pid, sku=sku, refid=refid, nombre=str(row.get("nombre") or "").strip(),
                revisado=time.strftime("%Y-%m-%d %H:%M:%S"))
 
     def done(cat, motivo, sub=""):
@@ -223,6 +223,8 @@ def check(row):
         return done("DUDA", "SKU no encontrado en catálogo")
     if pid and pid != str(p.get("productId")):
         return done("DUDA", "El ID de producto no corresponde al link/SKU")
+    if refid and refid != sku and refid != str(p.get("productReference")):
+        return done("DUDA", f"El código {refid} no corresponde (el producto tiene RefId {p.get('productReference')})")
     if redirected:
         return done("DUDA", "El link redirige a otro producto")
     if not in_stock or not out["precio"]:
@@ -239,15 +241,33 @@ def check_many(rows, workers=8):
 ALIASES = {
     "link": ("link", "url", "enlace", "links", "urls"),
     "id_producto": ("id_producto", "id del producto", "id producto", "productid", "product id"),
-    "sku": ("sku", "skus", "id de sku", "id sku", "skuid", "codigo", "código", "refid", "cod"),
+    "sku": ("sku", "skus", "id de sku", "id sku", "skuid"),
+    "refid": ("refid", "ref id", "cod canasta", "cod producto", "codigo", "código", "cod"),
     "nombre": ("nombre", "nombre del producto", "producto", "descripcion", "descripción"),
 }
 
 
 def norm_row(raw):
+    """Mapea encabezados libres. Acepta coincidencia exacta o por prefijo ("Descripción C")."""
     low = {re.sub(r"\s+", " ", str(k).strip().lower()): v for k, v in raw.items() if k is not None}
-    return {key: next((low[a] for a in names if a in low and low[a] not in (None, "")), "")
-            for key, names in ALIASES.items()}
+    out = {}
+    for key, names in ALIASES.items():
+        out[key] = ""
+        for exact in (True, False):
+            for a in names:
+                for col, v in low.items():
+                    if v in (None, "") or not (col == a if exact else col.startswith(a + " ")):
+                        continue
+                    out[key] = v
+                    break
+                if out[key] != "":
+                    break
+            if out[key] != "":
+                break
+    # Si solo vino un código interno, se usa como SKU (el validador acepta RefId)
+    if out["sku"] in (None, "") and out["refid"] not in (None, ""):
+        out["sku"] = out["refid"]
+    return out
 
 
 def read_input(path):

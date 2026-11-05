@@ -95,7 +95,7 @@ a{color:var(--accent)}
       <span style="flex:1"></span>
       <button class="btn link" id="tpl">Descargar plantilla</button>
     </div>
-    <p class="hint" style="margin:10px 0 0">Columnas reconocidas: <b>link</b>, <b>ID del producto</b>, <b>ID de SKU</b> (o RefId), <b>Nombre del producto</b>. Basta con link + SKU, o con ID del producto + SKU.</p>
+    <p class="hint" style="margin:10px 0 0">Columnas reconocidas: <b>link</b>, <b>ID del producto</b>, <b>ID de SKU</b>, <b>Cod / RefId</b>, <b>Nombre / Descripción</b>. Puede pegar desde Excel, correo o Teams. Basta con link + SKU, o con ID del producto + SKU.</p>
     <p class="err" id="err" hidden></p>
   </section>
 
@@ -138,7 +138,7 @@ a{color:var(--accent)}
   });
 
   // ---------- lectura de la entrada
-  const HEADER_WORDS = /link|url|enlace|sku|producto|nombre|refid|codigo|código/i;
+  const HEADER_WORDS = /link|url|enlace|sku|producto|nombre|refid|codigo|código|\bcod\b|descripci|formato|tienda/i;
   function fromMatrix(m) {
     m = m.filter(r => r.some(c => String(c ?? "").trim() !== ""));
     if (!m.length) return [];
@@ -172,9 +172,26 @@ a{color:var(--accent)}
     if (t.length) o.nombre = t.join(" ");
     return o;
   }
+  // Tabla copiada desde correo/Teams/PDF: una celda por línea.
+  // Ej.: "FORMATO / Cod Canasta / Descripción / ID de SKU / ID del producto" y luego 5 líneas por fila.
+  function parseVertical(lines) {
+    if (lines.some(l => /\t|;/.test(l))) return null;
+    const isHead = l => !/:\s*$/.test(l) && l.length <= 40 && !/\d{4,}/.test(l) && HEADER_WORDS.test(l);
+    let i = 0;
+    while (i < lines.length && !isHead(lines[i])) i++;          // salta "Van SKUS:" y similares
+    let j = i;
+    while (j < lines.length && isHead(lines[j])) j++;
+    const k = j - i, data = lines.slice(j);
+    if (k < 2 || !data.length || data.length % k) return null;
+    const m = [lines.slice(i, j)];
+    for (let x = 0; x < data.length; x += k) m.push(data.slice(x, x + k));
+    return fromMatrix(m);
+  }
   function parseText(txt) {
-    const lines = txt.replace(/\r/g, "").split("\n").filter(l => l.trim());
+    const lines = txt.replace(/\r/g, "").split("\n").map(l => l.trim()).filter(Boolean);
     if (!lines.length) return [];
+    const vertical = parseVertical(lines);
+    if (vertical) return vertical;
     const split = l => {
       for (const d of ["\t", ";", ","]) if (l.includes(d)) return l.split(d).map(c => c.trim().replace(/^"|"$/g, ""));
       const p = l.trim().split(/\s{2,}/);
@@ -277,7 +294,7 @@ a{color:var(--accent)}
   $("#q").addEventListener("input", render);
 
   // ---------- descargas
-  const COLS = ["tienda","link","id_producto","sku","nombre","categoria","subcategoria","motivo","producto_web","id_producto_web","refid_web","sku_pertenece","stock","precio","http","url_final","producto_del_sku","revisado"];
+  const COLS = ["tienda","link","id_producto","sku","refid","nombre","categoria","subcategoria","motivo","producto_web","id_producto_web","refid_web","sku_pertenece","stock","precio","http","url_final","producto_del_sku","revisado"];
   const stamp = () => new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
   $("#dlx").onclick = () => {
     const list = results.filter(Boolean), wb = XLSX.utils.book_new();
