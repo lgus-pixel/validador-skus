@@ -156,11 +156,42 @@ a{color:var(--accent)}
     }
     return body.map(r => Object.fromEntries(head.map((h, i) => [h, r[i] ?? ""]).filter(([h]) => h)));
   }
+  // Columnas conocidas, para reconocer encabezados separados solo por espacios
+  const HEAD_PHRASES = [["id_producto", /id\s+del?\s+producto|product\s*id|id_producto/i],
+    ["sku", /id\s+de\s+sku|sku\s*id|\bsku\b|ref\s*id/i], ["link", /\b(link|url|enlace)\b/i],
+    ["nombre", /nombre(\s+del\s+producto)?|descripci[oó]n/i]];
+  // Línea sin separador claro: link = token http, ID producto = número inicial, SKU = número final
+  function smartRow(line, keys) {
+    const t = line.trim().split(/\s+/), o = {};
+    const li = t.findIndex(x => /^https?:\/\//i.test(x));
+    if (li >= 0) o.link = t.splice(li, 1)[0];
+    const wantsId = keys.includes("id_producto") || (!keys.length && !o.link);
+    if (t.length > 1 && /^\d+$/.test(t[t.length - 1])) o.sku = t.pop();
+    if (wantsId && t.length && /^\d+$/.test(t[0])) o.id_producto = t.shift();
+    else if (!o.sku && t.length === 1 && /^\d+$/.test(t[0])) o.sku = t.shift();
+    if (t.length) o.nombre = t.join(" ");
+    return o;
+  }
   function parseText(txt) {
     const lines = txt.replace(/\r/g, "").split("\n").filter(l => l.trim());
     if (!lines.length) return [];
-    const d = lines[0].includes("\t") ? "\t" : (lines[0].split(";").length > lines[0].split(",").length ? ";" : ",");
-    return fromMatrix(lines.map(l => l.split(d).map(c => c.trim().replace(/^"|"$/g, ""))));
+    const split = l => {
+      for (const d of ["\t", ";", ","]) if (l.includes(d)) return l.split(d).map(c => c.trim().replace(/^"|"$/g, ""));
+      const p = l.trim().split(/\s{2,}/);
+      return p.length > 1 ? p : null;
+    };
+    const h = split(lines[0]);
+    // Caso normal: separadores reales (tab de Excel, ; , o varios espacios) y misma cantidad de columnas
+    if (h && lines.every(l => (split(l) || []).length === h.length)) return fromMatrix(lines.map(split));
+    // Caso "copiado de un chat o correo": deducir columnas por contenido
+    const hasHeader = HEADER_WORDS.test(lines[0]) && !/^\s*\d+\s/.test(lines[0]);
+    const keys = hasHeader ? HEAD_PHRASES.map(([k, re]) => [k, lines[0].search(re)]).filter(([, i]) => i >= 0)
+      .sort((a, b) => a[1] - b[1]).map(([k]) => k) : [];
+    return (hasHeader ? lines.slice(1) : lines).map(l => {
+      const cells = split(l);
+      if (cells && keys.length === cells.length) return Object.fromEntries(keys.map((k, i) => [k, cells[i]]));
+      return smartRow(l, keys);
+    });
   }
   function setRows(r) {
     rows = r;

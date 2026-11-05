@@ -166,7 +166,7 @@ def check(row):
     else:
         # --- Camino B: sin link -> buscar por ID producto / SKU en cada tienda
         if not pid and not sku:
-            return done("DUDA", "Fila sin link, ID de producto ni SKU")
+            return done("DUDA", "No se reconocieron columnas: revise que la fila tenga link, ID de producto o SKU")
         api_error = False
         for name, base in STORES.items():
             res = api(base, f"?fq=productId:{urllib.parse.quote(pid)}") if pid else []
