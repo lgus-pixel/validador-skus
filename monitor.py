@@ -108,6 +108,53 @@ def stock_of(item):
     return qty, avail and qty > 0, price
 
 
+def sip_of(item):
+    """Precio con Tarjeta Sip, replicando el cálculo de la web de Plaza Vea.
+
+    La promoción viene en commertialOffer.PromotionTeasers con nombre "TARJETA OH…"
+    (nombre interno heredado). Tipos soportados, igual que la web:
+      PromotionalPriceTableItemsDiscount: precio sin descuento − valor / unitMultiplier
+      MaximumUnitPriceDiscount:           valor / unitMultiplier (precio fijo)
+      PercentualDiscount:                 precio online − %
+    Solo cuenta si el precio Sip es menor al precio online.
+    Devuelve (precio_regular, precio_online, precio_sip | None).
+    """
+    mult = float(item.get("unitMultiplier") or 1) or 1
+    for s in item.get("sellers", []):
+        co = s.get("commertialOffer", {})
+        price = co.get("Price") or 0
+        if not price:
+            continue
+        regular = co.get("ListPrice") or price
+        base = co.get("PriceWithoutDiscount") or regular
+        sip = None
+        for t in co.get("PromotionTeasers") or []:
+            name = t.get("Name") or ""
+            if "TARJETA OH" not in name.upper() and "TARJETA SIP" not in name.upper():
+                continue
+            if "LURIN" in name.upper():
+                continue  # promoción oculta de una tienda específica
+            params = (t.get("Effects") or {}).get("Parameters") or []
+            if not params:
+                continue
+            kind, value = params[0].get("Name"), None
+            if kind == "PromotionalPriceTableItemsIds" and len(params) > 1:
+                kind = params[1].get("Name")
+            if kind == "PromotionalPriceTableItemsDiscount" and len(params) > 1:
+                value = float(params[1]["Value"])
+                sip = round(100 * (base - value / mult)) / 100
+            elif kind == "MaximumUnitPriceDiscount":
+                sip = round(float(params[0]["Value"]) / mult, 2)
+            elif kind == "PercentualDiscount":
+                sip = round(price - price * float(params[0]["Value"]) / 100, 2)
+            if sip is not None:
+                break
+        if sip is not None and not (0 < sip < price):
+            sip = None
+        return regular, price, sip
+    return None, None, None
+
+
 def find_sku_owner(base, sku):
     """Producto al que pertenece un SKU (itemId VTEX, RefId o EAN)."""
     for fq in ("skuId", "alternateIds_RefId", "alternateIds_Ean"):
@@ -124,7 +171,8 @@ def is_404(status, final):
 # ---------------------------------------------------------------- core
 COLUMNS = ["tienda", "link", "id_producto", "sku", "refid", "nombre", "categoria", "subcategoria",
            "motivo", "producto_web", "id_producto_web", "refid_web", "sku_pertenece",
-           "stock", "precio", "http", "url_final", "producto_del_sku", "revisado"]
+           "stock", "precio_regular", "precio", "tiene_sip", "precio_sip", "dscto_sip_soles",
+           "dscto_sip_pct", "dscto_sip_vs_regular_pct", "http", "url_final", "producto_del_sku", "revisado"]
 
 
 def check(row):
@@ -211,6 +259,16 @@ def check(row):
     out["stock"] = sum(s[0] for s in stocks)
     out["precio"] = next((s[2] for s in stocks if s[2]), "")
     in_stock = any(s[1] for s in stocks)
+
+    # Precio con Tarjeta Sip y su descuento (contra el precio online y el regular)
+    regular, online, sip = sip_of(match or (p.get("items") or [{}])[0])
+    out["precio_regular"] = regular or ""
+    out["tiene_sip"] = "SI" if sip else "NO"
+    if sip:
+        out["precio_sip"] = sip
+        out["dscto_sip_soles"] = round(online - sip, 2)
+        out["dscto_sip_pct"] = round(100 * (online - sip) / online, 1)
+        out["dscto_sip_vs_regular_pct"] = round(100 * (regular - sip) / regular, 1) if regular else ""
 
     # Clasificación (las dudas de identidad van antes que el stock)
     if not sku:

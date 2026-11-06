@@ -37,3 +37,12 @@ gcloud run deploy validador-skus --source . --region us-central1 --allow-unauthe
 
 ## Variables opcionales
 `PORT` (8080), `WORKERS` (8 consultas en paralelo por lote), `MAX_BATCHES` (3 lotes simultáneos en todo el servidor).
+
+## Precio con Tarjeta Sip
+Para cada producto se informa `tiene_sip`, `precio_sip` y el descuento:
+- `dscto_sip_soles` y `dscto_sip_pct`: precio online − precio SIP.
+- `dscto_sip_vs_regular_pct`: contra el precio regular (tachado).
+
+El precio SIP se calcula igual que la web de Plaza Vea, desde la promoción "TARJETA OH…" del
+producto (`PromotionTeasers`): precio sin descuento − monto de la promoción. Ejemplo: regular S/ 499,
+promoción S/ 130 → precio SIP S/ 369. Solo cuenta si es menor al precio online.

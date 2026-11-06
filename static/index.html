@@ -60,6 +60,7 @@ tr:last-child td{border-bottom:none}
 .badge{display:inline-block;padding:2px 8px;border-radius:99px;font-weight:600;font-size:12px;white-space:nowrap}
 .b-OK{background:var(--ok-bg);color:var(--ok)}.b-DUDA{background:var(--duda-bg);color:var(--duda)}.b-ROTO{background:var(--roto-bg);color:var(--roto)}
 .small{color:var(--muted);font-size:12px}
+.sip{font-weight:700;color:var(--accent)}
 a{color:var(--accent)}
 .legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;font-size:13px;color:var(--muted)}
 .legend b{color:var(--text)}
@@ -70,7 +71,7 @@ a{color:var(--accent)}
 <body>
 <main>
   <h1>Validador de SKUs</h1>
-  <p class="sub">Pegue o suba su lista. Se verifica en Plaza Vea y Makro si el link abre, si el SKU pertenece al producto y si hay stock.</p>
+  <p class="sub">Pegue o suba su lista. Se verifica en Plaza Vea y Makro si el link abre, si el SKU pertenece al producto, si hay stock y si tiene precio con Tarjeta Sip.</p>
 
   <section class="card">
     <div class="tabs" role="tablist">
@@ -110,7 +111,7 @@ a{color:var(--accent)}
         </div>
       </div>
       <div class="tablewrap"><table>
-        <thead><tr><th>Categoría</th><th>Tienda</th><th>ID producto</th><th>SKU</th><th>Producto en la web</th><th>Motivo</th><th>Stock</th><th>Precio</th><th>Link</th></tr></thead>
+        <thead><tr><th>Categoría</th><th>Tienda</th><th>ID producto</th><th>SKU</th><th>Producto en la web</th><th>Motivo</th><th>Stock</th><th>Precio</th><th>Precio SIP</th><th>Dscto SIP</th><th>Link</th></tr></thead>
         <tbody id="tbody"></tbody>
       </table></div>
       <p class="small" id="shown"></p>
@@ -269,41 +270,47 @@ a{color:var(--accent)}
   };
 
   // ---------- resultados
+  const money = v => v === "" || v == null ? "" : "S/ " + Number(v).toFixed(2);
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   function render() {
     const list = results.filter(Boolean);
     $("#results").hidden = !list.length;
     const c = k => list.filter(r => r.categoria === k).length, s = k => list.filter(r => r.subcategoria === k).length;
     const tiles = [["TODOS", "Total revisado", list.length, ""], ["OK", "OK, pertenece", c("OK"), "ok"],
-      ["DUDA", "Dudas", c("DUDA"), "duda"], ["ROTO", `Rotos · ${s("404")} 404 · ${s("SIN STOCK")} sin stock`, c("ROTO"), "roto"]];
+      ["DUDA", "Dudas", c("DUDA"), "duda"], ["ROTO", `Rotos · ${s("404")} 404 · ${s("SIN STOCK")} sin stock`, c("ROTO"), "roto"],
+      ["SIP", "Con precio SIP", list.filter(r => r.tiene_sip === "SI").length, ""]];
     $("#tiles").innerHTML = tiles.map(([k, l, n, cls]) =>
       `<button class="tile ${cls}" data-f="${k}" aria-pressed="${filter === k}"><div class="n">${n}</div><div class="l">${l}</div></button>`).join("");
     $("#tiles").querySelectorAll(".tile").forEach(b => b.onclick = () => { filter = b.dataset.f; render(); });
     const q = $("#q").value.trim().toLowerCase();
-    const shown = list.filter(r => (filter === "TODOS" || r.categoria === filter) &&
+    const shown = list.filter(r => (filter === "TODOS" || r.categoria === filter || (filter === "SIP" && r.tiene_sip === "SI")) &&
       (!q || [r.sku, r.id_producto, r.nombre, r.producto_web, r.motivo, r.link].join(" ").toLowerCase().includes(q)));
     $("#tbody").innerHTML = shown.slice(0, 1000).map(r => `<tr>
       <td><span class="badge b-${esc(r.categoria)}">${esc(r.categoria)}${r.subcategoria ? " · " + esc(r.subcategoria) : ""}</span></td>
       <td>${esc(r.tienda)}</td><td class="id">${esc(r.id_producto || r.id_producto_web)}</td><td class="id">${esc(r.sku)}</td>
       <td>${esc(r.producto_web || r.nombre)}${r.nombre && r.producto_web ? `<div class="small">Lista: ${esc(r.nombre)}</div>` : ""}</td>
       <td>${esc(r.motivo)}${r.producto_del_sku ? `<div class="small">SKU es de: ${esc(r.producto_del_sku)}</div>` : ""}</td>
-      <td class="num">${esc(r.stock)}</td><td class="num">${r.precio ? "S/ " + Number(r.precio).toFixed(2) : ""}</td>
+      <td class="num">${esc(r.stock)}</td>
+      <td class="num">${money(r.precio)}${r.precio_regular && Number(r.precio_regular) > Number(r.precio) ? `<div class="small"><s>${money(r.precio_regular)}</s></div>` : ""}</td>
+      <td class="num">${r.tiene_sip === "SI" ? `<span class="sip">${money(r.precio_sip)}</span>` : (r.tiene_sip === "NO" ? '<span class="small">No tiene</span>' : "")}</td>
+      <td class="num">${r.tiene_sip === "SI" ? `${money(r.dscto_sip_soles)}<div class="small">${r.dscto_sip_pct}% vs online · ${r.dscto_sip_vs_regular_pct}% vs regular</div>` : ""}</td>
       <td>${r.link ? `<a href="${esc(r.link)}" target="_blank" rel="noopener">abrir</a>` : ""}</td></tr>`).join("");
     $("#shown").textContent = shown.length > 1000 ? `Mostrando 1000 de ${shown.length}. Descargue el Excel para ver todo.` : `${shown.length} filas`;
   }
   $("#q").addEventListener("input", render);
 
   // ---------- descargas
-  const COLS = ["tienda","link","id_producto","sku","refid","nombre","categoria","subcategoria","motivo","producto_web","id_producto_web","refid_web","sku_pertenece","stock","precio","http","url_final","producto_del_sku","revisado"];
+  const COLS = ["tienda","link","id_producto","sku","refid","nombre","categoria","subcategoria","motivo","producto_web","id_producto_web","refid_web","sku_pertenece","stock","precio_regular","precio","tiene_sip","precio_sip","dscto_sip_soles","dscto_sip_pct","dscto_sip_vs_regular_pct","http","url_final","producto_del_sku","revisado"];
   const stamp = () => new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
   $("#dlx").onclick = () => {
     const list = results.filter(Boolean), wb = XLSX.utils.book_new();
     const n = list.length, cnt = f => list.filter(f).length, pct = x => n ? Math.round(1000 * x / n) / 10 : 0;
     const sum = [["Categoría", "Cantidad", "%"], ...["OK", "DUDA", "ROTO"].map(k => [k, cnt(r => r.categoria === k), pct(cnt(r => r.categoria === k))]),
-      ...["404", "SIN STOCK"].map(k => ["  ROTO · " + k, cnt(r => r.subcategoria === k), pct(cnt(r => r.subcategoria === k))]), ["TOTAL", n, 100]];
+      ...["404", "SIN STOCK"].map(k => ["  ROTO · " + k, cnt(r => r.subcategoria === k), pct(cnt(r => r.subcategoria === k))]), ["TOTAL", n, 100],
+      [], ["Con precio SIP", cnt(r => r.tiene_sip === "SI"), pct(cnt(r => r.tiene_sip === "SI"))]];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sum), "Resumen");
-    for (const k of ["TODOS", "OK", "DUDA", "ROTO"]) {
-      const data = list.filter(r => k === "TODOS" || r.categoria === k).map(r => COLS.map(c => r[c] ?? ""));
+    for (const k of ["TODOS", "OK", "DUDA", "ROTO", "SIP"]) {
+      const data = list.filter(r => k === "TODOS" || r.categoria === k || (k === "SIP" && r.tiene_sip === "SI")).map(r => COLS.map(c => r[c] ?? ""));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([COLS, ...data]), k);
     }
     XLSX.writeFile(wb, `validacion_skus_${stamp()}.xlsx`);
